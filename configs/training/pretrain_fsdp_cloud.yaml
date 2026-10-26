@@ -1,0 +1,37 @@
+# Distributed Pretraining Configuration for Codex-50B on H100 Cluster
+experiment_name: "codex-50b-pretrain-run-01"
+output_dir: "./checkpoints/50b_moe"
+
+# Hardware & Distributed Topology
+distributed_strategy: "fsdp"   # PyTorch Fully Sharded Data Parallel
+sharding_strategy: "FULL_SHARD"
+mixed_precision: "bf16"
+tensor_parallel_size: 4
+pipeline_parallel_size: 4
+data_parallel_size: 16         # Total GPUs = 4 * 4 * 16 = 256 GPUs
+activation_checkpointing: true
+cpu_offload: false
+
+# Optimization Hyperparameters
+global_batch_size: 2048        # ~8.38M tokens per batch at 4096 seq_len
+per_device_train_batch_size: 2
+gradient_accumulation_steps: 4
+learning_rate: 2.5e-4
+min_learning_rate: 2.5e-5
+weight_decay: 0.1
+adam_beta1: 0.9
+adam_beta2: 0.95
+adam_eps: 1.0e-8
+max_grad_norm: 1.0
+
+# Schedule & Steps
+max_tokens: 1500000000000      # 1.5 Trillion tokens
+warmup_tokens: 15000000000     # 15 Billion tokens (1% warmup)
+lr_scheduler: "cosine_with_min"
+
+# Checkpointing & Logging
+save_interval_steps: 1000
+eval_interval_steps: 250
+log_interval_steps: 10
+checkpoint_retention_limit: 5
+wandb_project: "codex-50b-pretrain"

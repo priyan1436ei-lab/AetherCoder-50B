@@ -1,0 +1,34 @@
+# 50B Sparse Mixture-of-Experts (MoE) Architecture Specification
+model_type: "moe_causal_lm"
+model_name: "codex-50b-moe"
+
+# Dimensionality
+vocab_size: 65536
+hidden_size: 6144
+num_hidden_layers: 48
+intermediate_size: 16384       # Per-expert FFN intermediate size
+
+# Attention Configuration (Grouped-Query Attention)
+num_attention_heads: 48        # Query heads
+num_key_value_heads: 8         # Key/Value heads (6:1 GQA compression)
+head_dim: 128                  # 6144 / 48
+max_position_embeddings: 32768 # Native 32k context, extendable to 128k
+rope_theta: 500000.0           # Base frequency for RoPE
+rope_scaling_type: "yarn"      # YaRN scaling for ultra-long context
+
+# Mixture of Experts (MoE) Configuration
+num_experts: 16                # Total routed experts
+num_experts_per_tok: 2         # Top-2 active experts routed per token
+num_shared_experts: 2          # Always-active shared experts for domain foundations
+moe_router_aux_loss_coef: 0.01 # Load balancing auxiliary loss coefficient
+moe_z_loss_coef: 0.001         # Router z-loss for numerical stability
+
+# Normalization & Activation
+rms_norm_eps: 1.0e-6
+hidden_act: "silu"             # SwiGLU: SiLU(xW1) * xW3
+tie_word_embeddings: false
+initializer_range: 0.02
+
+# Parameter Breakdown
+# Total Parameters: ~48.8 Billion
+# Active Parameters per Token: ~12.2 Billion (2 shared + 2 routed experts out of 16)

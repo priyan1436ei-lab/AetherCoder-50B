@@ -1,0 +1,31 @@
+# Local Prototype Training Configuration (RTX 3050 Laptop GPU / CPU)
+experiment_name: "codex-150m-local-prototype"
+output_dir: "./checkpoints/prototype_150m"
+
+# Hardware Setup
+distributed_strategy: "single_device"
+mixed_precision: "fp32"        # or "fp16" if CUDA is enabled
+activation_checkpointing: false
+cpu_offload: false
+
+# Optimization Hyperparameters
+global_batch_size: 4
+per_device_train_batch_size: 2
+gradient_accumulation_steps: 2
+learning_rate: 5.0e-4
+min_learning_rate: 5.0e-5
+weight_decay: 0.05
+adam_beta1: 0.9
+adam_beta2: 0.95
+adam_eps: 1.0e-8
+max_grad_norm: 1.0
+
+# Schedule & Steps
+max_steps: 50
+warmup_steps: 10
+lr_scheduler: "cosine"
+
+# Checkpointing & Logging
+save_interval_steps: 25
+eval_interval_steps: 10
+log_interval_steps: 5

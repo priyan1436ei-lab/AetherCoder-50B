@@ -1,0 +1,26 @@
+# 50B Dense Transformer Architecture Specification
+model_type: "dense_causal_lm"
+model_name: "codex-50b-dense"
+
+# Dimensionality
+vocab_size: 65536
+hidden_size: 6144
+num_hidden_layers: 56
+intermediate_size: 24576       # Standard 4x SwiGLU: (8/3)*hidden_size
+
+# Attention Configuration
+num_attention_heads: 48
+num_key_value_heads: 8         # 6:1 GQA compression
+head_dim: 128
+max_position_embeddings: 32768
+rope_theta: 500000.0
+
+# Normalization & Activation
+rms_norm_eps: 1.0e-6
+hidden_act: "silu"
+tie_word_embeddings: false
+initializer_range: 0.02
+
+# Parameter Breakdown:
+# Total Parameters: ~50.2 Billion
+# Active Parameters per Token: 50.2 Billion

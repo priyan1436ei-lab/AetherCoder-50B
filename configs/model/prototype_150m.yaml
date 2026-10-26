@@ -1,0 +1,36 @@
+# 150M Scaled Prototype (Codex-Tiny) Architecture Specification
+# Mathematically identical architectural components to Codex-50B-MoE
+model_type: "moe_causal_lm"
+model_name: "codex-150m-prototype"
+
+# Dimensionality
+vocab_size: 65536
+hidden_size: 512
+num_hidden_layers: 8
+intermediate_size: 1376        # Per-expert FFN intermediate size
+
+# Attention Configuration (Grouped-Query Attention)
+num_attention_heads: 8         # Query heads
+num_key_value_heads: 2         # Key/Value heads (4:1 GQA compression)
+head_dim: 64                   # 512 / 8
+max_position_embeddings: 4096  # Context window
+rope_theta: 100000.0           # Base frequency for RoPE
+rope_scaling_type: "yarn"
+
+# Mixture of Experts (MoE) Configuration
+num_experts: 4                 # 4 total routed experts
+num_experts_per_tok: 2         # Top-2 active experts routed per token
+num_shared_experts: 1          # 1 shared expert
+moe_router_aux_loss_coef: 0.01
+moe_z_loss_coef: 0.001
+
+# Normalization & Activation
+rms_norm_eps: 1.0e-6
+hidden_act: "silu"             # SwiGLU: SiLU(xW1) * xW3
+tie_word_embeddings: false
+initializer_range: 0.02
+
+# Parameter Breakdown:
+# Total Parameters: ~152 Million
+# Active Parameters per Token: ~68 Million
+# Memory Footprint: ~320 MB in BF16
