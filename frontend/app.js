@@ -96,22 +96,48 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // 6. Real-Time Telemetry Polling (/health)
+  // 6. Real-Time Telemetry Polling (/health) and Model List (/v1/models)
+  async function initModels() {
+    try {
+      const res = await fetch("/v1/models");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.data && data.data.length > 0) {
+          modelSelect.innerHTML = "";
+          data.data.forEach(m => {
+            const opt = document.createElement("option");
+            opt.value = m.id;
+            opt.textContent = `${m.id} (${m.status || 'ready'})`;
+            modelSelect.appendChild(opt);
+          });
+        }
+      }
+    } catch {
+      // Offline fallback: prototype model
+    }
+  }
+
   async function pollTelemetry() {
     try {
       const res = await fetch("/health");
       if (res.ok) {
         const data = await res.json();
         metricRam.textContent = `${(data.system_memory_used_mb / 1024).toFixed(1)} GB`;
-        metricVram.textContent = `${data.vram_used_mb.toFixed(1)} MB`;
-        clusterStatusText.textContent = `Online (${data.model_name} on ${data.device.toUpperCase()})`;
+        metricVram.textContent = data.vram_used_mb > 0 ? `${data.vram_used_mb.toFixed(1)} MB` : "CPU Mode";
+        clusterStatusText.textContent = `Online: ${data.loaded_model_id || data.model_name} on ${data.device.toUpperCase()}`;
+        document.getElementById("cluster-status-badge").querySelector(".status-dot").className = "status-dot online";
+      } else {
+        throw new Error("Health check non-200");
       }
     } catch {
-      // Local server might be starting or running offline
-      clusterStatusText.textContent = "Engine Ready (Local Dev Server)";
+      metricRam.textContent = "-- GB";
+      metricVram.textContent = "-- MB";
+      clusterStatusText.textContent = "Engine Offline (Start API server on port 8000)";
+      document.getElementById("cluster-status-badge").querySelector(".status-dot").className = "status-dot offline";
     }
   }
-  setInterval(pollTelemetry, 3000);
+  initModels();
+  setInterval(pollTelemetry, 4000);
   pollTelemetry();
 
   // 7. Core Messaging & Streaming Generator
@@ -162,12 +188,20 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
+        let errorDetail = `HTTP ${response.status} ${response.statusText}`;
+        try {
+          const errJson = await response.json();
+          if (errJson && errJson.detail) {
+            errorDetail = errJson.detail;
+          }
+        } catch (_) {}
+        throw new Error(errorDetail);
       }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder("utf-8");
       let fullGeneratedText = "";
+
 
       while (true) {
         const { done, value } = await reader.read();

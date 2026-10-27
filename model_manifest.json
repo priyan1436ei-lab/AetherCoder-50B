@@ -1,0 +1,90 @@
+{
+  "manifest_version": "1.0.0",
+  "project": "AetherCoder-50B",
+  "models": {
+    "codex-150m-prototype": {
+      "status": "prototype_ready",
+      "model_type": "moe_causal_lm",
+      "architecture": {
+        "hidden_size": 512,
+        "num_hidden_layers": 8,
+        "num_attention_heads": 8,
+        "num_key_value_heads": 2,
+        "intermediate_size": 1536,
+        "vocab_size": 65536,
+        "max_position_embeddings": 4096,
+        "num_experts": 4,
+        "num_experts_per_tok": 2,
+        "num_shared_experts": 1,
+        "norm_type": "rmsnorm",
+        "activation": "swiglu"
+      },
+      "parameter_counts": {
+        "total_parameters": 156918272,
+        "active_parameters_per_token": 123101696,
+        "embedding_parameters": 33554432
+      },
+      "hardware_requirements": {
+        "min_ram_gb": 4,
+        "min_vram_gb": 2,
+        "recommended_device": "cpu_or_consumer_gpu"
+      },
+      "checkpoint": "checkpoints/prototype_150m/checkpoint_step_5_final.pt"
+    },
+    "codex-50b-dense": {
+      "status": "planned_distributed_spec",
+      "model_type": "dense_causal_lm",
+      "architecture": {
+        "hidden_size": 6144,
+        "num_hidden_layers": 56,
+        "num_attention_heads": 48,
+        "num_key_value_heads": 8,
+        "intermediate_size": 16384,
+        "vocab_size": 65536,
+        "max_position_embeddings": 32768,
+        "norm_type": "rmsnorm",
+        "activation": "swiglu"
+      },
+      "parameter_counts": {
+        "total_parameters": 31105652736,
+        "active_parameters_per_token": 31105652736,
+        "embedding_parameters": 402653184
+      },
+      "hardware_requirements": {
+        "min_ram_gb": 128,
+        "min_vram_gb": 64,
+        "recommended_cluster": "4x-8x A100-80GB or H100 with FSDP"
+      },
+      "checkpoint": null
+    },
+    "codex-50b-moe": {
+      "status": "planned_distributed_spec",
+      "model_type": "moe_causal_lm",
+      "architecture": {
+        "hidden_size": 6144,
+        "num_hidden_layers": 48,
+        "num_attention_heads": 48,
+        "num_key_value_heads": 8,
+        "intermediate_size": 16384,
+        "vocab_size": 65536,
+        "max_position_embeddings": 32768,
+        "num_experts": 16,
+        "num_experts_per_tok": 2,
+        "num_shared_experts": 2,
+        "norm_type": "rmsnorm",
+        "activation": "swiglu"
+      },
+      "parameter_counts": {
+        "total_parameters": 265957742592,
+        "active_parameters_per_token": 63020537856,
+        "embedding_parameters": 402653184
+      },
+      "hardware_requirements": {
+        "min_ram_gb": 1024,
+        "min_vram_gb": 512,
+        "recommended_cluster": "32x-64x H100-80GB with FSDP / ZeRO-3 / Expert Parallelism"
+      },
+      "checkpoint": null
+    }
+  }
+}

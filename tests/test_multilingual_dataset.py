@@ -18,9 +18,14 @@ def test_curated_dataset_covers_all_domains():
         "debugging",
         "security",
         "agent_trajectory",
+        "multi_file_reasoning",
+        "unit_test",
+        "code_completion",
     }
     for req in required_domains:
         assert req in domains, f"Missing domain {req} in curated dataset."
+    assert len(CURATED_DATASET) >= 18, "Expected at least 18 curated samples"
+
 
 
 def test_synthetic_generator_batch():

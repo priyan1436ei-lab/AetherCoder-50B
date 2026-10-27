@@ -1,0 +1,37 @@
+{
+  "dataset_name": "AetherCoder-Multilingual-Corpus",
+  "version": "1.0.0",
+  "timestamp_utc": "2026-10-27T17:17:47Z",
+  "total_samples": 106,
+  "unique_content_hashes": 106,
+  "duplicates_rejected": 94,
+  "total_tokens": 126355,
+  "train_tokens": 101084,
+  "validation_tokens": 12635,
+  "test_tokens": 12636,
+  "split_ratios": {
+    "train": 0.8,
+    "val": 0.1,
+    "test": 0.1
+  },
+  "storage_dtype": "uint32",
+  "fim_rate": 0.5,
+  "tokenizer_vocab_size": 65536,
+  "licenses_permitted": [
+    "MIT",
+    "Apache-2.0",
+    "BSD",
+    "ISC",
+    "CC0"
+  ],
+  "domains_covered": [
+    "general",
+    "instruction_following",
+    "debugging",
+    "security",
+    "agent_trajectory",
+    "multi_file_reasoning",
+    "unit_test",
+    "code_completion"
+  ]
+}

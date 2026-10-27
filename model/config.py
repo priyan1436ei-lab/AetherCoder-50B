@@ -36,6 +36,43 @@ class ModelConfig:
     def __post_init__(self):
         if self.head_dim is None:
             self.head_dim = self.hidden_size // self.num_attention_heads
+        self.validate()
+
+    def validate(self) -> None:
+        """Validates configuration parameters for mathematical and architectural correctness."""
+        if self.vocab_size <= 0:
+            raise ValueError(f"vocab_size must be positive, got {self.vocab_size}")
+        if self.hidden_size <= 0:
+            raise ValueError(f"hidden_size must be positive, got {self.hidden_size}")
+        if self.num_hidden_layers <= 0:
+            raise ValueError(f"num_hidden_layers must be positive, got {self.num_hidden_layers}")
+        if self.num_attention_heads <= 0:
+            raise ValueError(f"num_attention_heads must be positive, got {self.num_attention_heads}")
+        if self.num_key_value_heads <= 0:
+            raise ValueError(f"num_key_value_heads must be positive, got {self.num_key_value_heads}")
+
+        if self.hidden_size % self.num_attention_heads != 0:
+            raise ValueError(
+                f"hidden_size ({self.hidden_size}) must be divisible by num_attention_heads ({self.num_attention_heads})"
+            )
+        if self.num_attention_heads % self.num_key_value_heads != 0:
+            raise ValueError(
+                f"num_attention_heads ({self.num_attention_heads}) must be divisible by num_key_value_heads ({self.num_key_value_heads})"
+            )
+        if self.head_dim != self.hidden_size // self.num_attention_heads:
+            raise ValueError(
+                f"head_dim ({self.head_dim}) does not match hidden_size // num_attention_heads ({self.hidden_size // self.num_attention_heads})"
+            )
+
+        if self.model_type == "moe_causal_lm":
+            if self.num_experts <= 0:
+                raise ValueError(f"num_experts must be positive for MoE, got {self.num_experts}")
+            if self.num_experts_per_tok <= 0 or self.num_experts_per_tok > self.num_experts:
+                raise ValueError(
+                    f"num_experts_per_tok ({self.num_experts_per_tok}) must be in range [1, num_experts ({self.num_experts})]"
+                )
+            if self.num_shared_experts < 0:
+                raise ValueError(f"num_shared_experts cannot be negative, got {self.num_shared_experts}")
 
     @classmethod
     def from_yaml(cls, yaml_path: str) -> "ModelConfig":

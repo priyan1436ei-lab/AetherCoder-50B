@@ -1,6 +1,6 @@
 """Mixture of Experts (MoE) Layer with Top-K Gating, Load Balancing, and Shared Experts."""
 
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,7 +10,7 @@ from model.losses.load_balancing import compute_load_balancing_loss
 
 
 class MoELayer(nn.Module):
-    """Sparse Mixture-of-Experts Layer with Top-K Gating and Shared Experts."""
+    """Sparse Mixture-of-Experts Layer with Top-K Gating, Load Balancing, and Shared Experts."""
 
     def __init__(
         self,
@@ -47,6 +47,9 @@ class MoELayer(nn.Module):
         else:
             self.shared_experts = None
 
+        # Track usage statistics
+        self.register_buffer("last_expert_counts", torch.zeros(num_experts, dtype=torch.long), persistent=False)
+
     def forward(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Forward pass through router and dispatched experts.
         
@@ -58,6 +61,7 @@ class MoELayer(nn.Module):
         """
         batch_size, seq_len, hidden_dim = hidden_states.shape
         flat_hidden = hidden_states.view(-1, hidden_dim)  # [N, hidden_dim]
+        num_tokens = flat_hidden.shape[0]
 
         # 1. Compute router logits and Top-K expert indices
         router_logits = self.gate(flat_hidden)  # [N, num_experts]
@@ -66,6 +70,11 @@ class MoELayer(nn.Module):
 
         # Normalize topk weights so they sum to 1.0 per token
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
+
+        # Update expert usage statistics
+        with torch.no_grad():
+            counts = torch.bincount(topk_indices.view(-1), minlength=self.num_experts)
+            self.last_expert_counts = counts[: self.num_experts]
 
         # 2. Compute auxiliary load balancing loss
         if self.training:
@@ -91,11 +100,19 @@ class MoELayer(nn.Module):
                 if token_mask.any():
                     selected_tokens = flat_hidden[token_mask]
                     expert_out = self.experts[e_idx](selected_tokens)
-                    final_output[token_mask] += weight_k[token_mask] * expert_out
+                    final_output = final_output.masked_scatter(token_mask.unsqueeze(-1), 
+                                                               final_output[token_mask] + weight_k[token_mask] * expert_out)
 
         # 4. Add Shared Experts output if present
         if self.shared_experts is not None:
             for shared_exp in self.shared_experts:
-                final_output += shared_exp(flat_hidden)
+                final_output = final_output + shared_exp(flat_hidden)
 
         return final_output.view(batch_size, seq_len, hidden_dim), aux_loss
+
+    def get_expert_usage_fractions(self) -> Dict[int, float]:
+        """Returns the fraction of tokens routed to each expert in the last forward pass."""
+        total = self.last_expert_counts.sum().item()
+        if total == 0:
+            return {i: 0.0 for i in range(self.num_experts)}
+        return {i: round(self.last_expert_counts[i].item() / total, 4) for i in range(self.num_experts)}

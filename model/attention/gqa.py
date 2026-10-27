@@ -77,16 +77,47 @@ class GroupedQueryAttention(nn.Module):
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-        # Scaled Dot-Product Attention with causal masking
-        is_causal = attention_mask is None and seq_len > 1
-        attn_output = F.scaled_dot_product_attention(
-            query_states,
-            key_states,
-            value_states,
-            attn_mask=attention_mask,
-            dropout_p=0.0,
-            is_causal=is_causal,
-        )
+        total_kv_seq_len = key_states.shape[2]
+
+        # Determine causal masking vs custom attention mask
+        if attention_mask is not None:
+            # Process custom mask to match [batch_size, 1, seq_len, total_kv_seq_len]
+            if attention_mask.dim() == 2:
+                # [batch, kv_seq_len] -> [batch, 1, 1, kv_seq_len]
+                attn_mask = attention_mask[:, None, None, :]
+                if attn_mask.dtype in (torch.int64, torch.int32, torch.bool):
+                    attn_mask = (1.0 - attn_mask.float()) * -1e9
+            else:
+                attn_mask = attention_mask
+            is_causal = False
+        else:
+            attn_mask = None
+            # Only use SDPA is_causal when seq_len == total_kv_seq_len (square prefill matrix)
+            is_causal = (seq_len > 1 and seq_len == total_kv_seq_len)
+
+        try:
+            attn_output = F.scaled_dot_product_attention(
+                query_states,
+                key_states,
+                value_states,
+                attn_mask=attn_mask,
+                dropout_p=0.0,
+                is_causal=is_causal,
+            )
+        except Exception:
+            # Numerically stable manual fallback for systems/masks where SDPA is unsupported
+            scale = 1.0 / math.sqrt(self.head_dim)
+            attn_weights = torch.matmul(query_states, key_states.transpose(-2, -1)) * scale
+            if is_causal:
+                causal_mask = torch.triu(
+                    torch.full((seq_len, total_kv_seq_len), float("-inf"), device=query_states.device),
+                    diagonal=1,
+                )
+                attn_weights = attn_weights + causal_mask[None, None, :, :]
+            elif attn_mask is not None:
+                attn_weights = attn_weights + attn_mask
+            attn_probs = F.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+            attn_output = torch.matmul(attn_probs, value_states)
 
         attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, seq_len, -1)
         output = self.o_proj(attn_output)

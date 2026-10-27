@@ -924,4 +924,827 @@ echo >&2 "[ERROR] Timed out waiting for ${APP_NAME} to become healthy."
 exit 1
 '''
     },
+
+    # -------------------------------------------------------------------------
+    # 17. PYTHON: Distributed Consensus State Machine
+    # -------------------------------------------------------------------------
+    {
+        "language": "python",
+        "domain": "instruction_following",
+        "title": "Distributed Consensus State Machine with Heartbeat",
+        "prompt": "Implement a stateful Raft-like node state machine in Python with leader election terms and heartbeat ticking.",
+        "code": '''import asyncio
+import random
+import time
+from enum import Enum
+from typing import Dict, List, Optional
+
+class NodeRole(Enum):
+    FOLLOWER = "follower"
+    CANDIDATE = "candidate"
+    LEADER = "leader"
+
+class RaftNode:
+    def __init__(self, node_id: str, peers: List[str]):
+        self.node_id = node_id
+        self.peers = peers
+        self.current_term = 0
+        self.voted_for: Optional[str] = None
+        self.role = NodeRole.FOLLOWER
+        self.last_heartbeat = time.monotonic()
+        self.election_timeout = random.uniform(1.5, 3.0)
+        self.log: List[Dict[str, any]] = []
+
+    def reset_election_timer(self):
+        self.last_heartbeat = time.monotonic()
+        self.election_timeout = random.uniform(1.5, 3.0)
+
+    async def start_election(self):
+        self.role = NodeRole.CANDIDATE
+        self.current_term += 1
+        self.voted_for = self.node_id
+        self.reset_election_timer()
+        votes = 1
+
+        for peer in self.peers:
+            if await self._request_vote(peer):
+                votes += 1
+
+        if votes > (len(self.peers) + 1) // 2:
+            self.role = NodeRole.LEADER
+            await self._broadcast_heartbeats()
+
+    async def _request_vote(self, peer: str) -> bool:
+        await asyncio.sleep(0.01)
+        return True
+
+    async def _broadcast_heartbeats(self):
+        if self.role == NodeRole.LEADER:
+            self.reset_election_timer()
+'''
+    },
+
+    # -------------------------------------------------------------------------
+    # 18. TYPESCRIPT: Resilient Reconnecting WebSocket Client
+    # -------------------------------------------------------------------------
+    {
+        "language": "typescript",
+        "domain": "instruction_following",
+        "title": "Resilient WebSocket Client with Exponential Jitter",
+        "prompt": "Write a resilient WebSocket client in TypeScript with automatic reconnect, heartbeat pings, and outgoing message queue.",
+        "code": '''export interface WSConfig {
+  url: string;
+  maxRetries?: number;
+  heartbeatIntervalMs?: number;
+}
+
+export class ResilientWebSocket {
+  private ws: WebSocket | null = null;
+  private retries = 0;
+  private messageQueue: string[] = [];
+  private isExplicitClose = false;
+  private heartbeatTimer?: any;
+
+  constructor(private config: WSConfig) {
+    this.config.maxRetries = config.maxRetries ?? 5;
+    this.config.heartbeatIntervalMs = config.heartbeatIntervalMs ?? 30000;
+  }
+
+  public connect(): void {
+    this.isExplicitClose = false;
+    this.ws = new WebSocket(this.config.url);
+
+    this.ws.onopen = () => {
+      this.retries = 0;
+      this.flushQueue();
+      this.startHeartbeat();
+    };
+
+    this.ws.onclose = () => {
+      this.stopHeartbeat();
+      if (!this.isExplicitClose) this.scheduleReconnect();
+    };
+  }
+
+  public send(data: string): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(data);
+    } else {
+      this.messageQueue.push(data);
+    }
+  }
+
+  private flushQueue(): void {
+    while (this.messageQueue.length > 0 && this.ws?.readyState === WebSocket.OPEN) {
+      const msg = this.messageQueue.shift()!;
+      this.ws.send(msg);
+    }
+  }
+
+  private scheduleReconnect(): void {
+    if (this.retries >= this.config.maxRetries!) return;
+    const delay = Math.min(1000 * Math.pow(2, this.retries) + Math.random() * 500, 30000);
+    this.retries++;
+    setTimeout(() => this.connect(), delay);
+  }
+
+  private startHeartbeat(): void {
+    this.heartbeatTimer = setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'PING' }));
+      }
+    }, this.config.heartbeatIntervalMs);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+  }
+}
+'''
+    },
+
+    # -------------------------------------------------------------------------
+    # 19. JAVASCRIPT: Reactive Observable Stream with Backpressure
+    # -------------------------------------------------------------------------
+    {
+        "language": "javascript",
+        "domain": "general",
+        "title": "Reactive Stream with Transform and Filter Operators",
+        "prompt": "Implement a composable reactive Observable stream in JavaScript with map, filter, and throttle operators.",
+        "code": '''export class Observable {
+  constructor(subscribe) {
+    this._subscribe = subscribe;
+  }
+
+  subscribe(observer) {
+    const safeObserver = typeof observer === 'function' ? { next: observer } : observer;
+    return this._subscribe(safeObserver);
+  }
+
+  map(fn) {
+    return new Observable(observer => {
+      return this.subscribe({
+        next: val => observer.next(fn(val)),
+        error: err => observer.error && observer.error(err),
+        complete: () => observer.complete && observer.complete(),
+      });
+    });
+  }
+
+  filter(predicate) {
+    return new Observable(observer => {
+      return this.subscribe({
+        next: val => {
+          if (predicate(val)) observer.next(val);
+        },
+        error: err => observer.error && observer.error(err),
+        complete: () => observer.complete && observer.complete(),
+      });
+    });
+  }
+}
+'''
+    },
+
+    # -------------------------------------------------------------------------
+    # 20. RUST: Lock-Free Atomic Ring Buffer with Cache-Line Padding
+    # -------------------------------------------------------------------------
+    {
+        "language": "rust",
+        "domain": "general",
+        "title": "Cache-Line Padded Lock-Free Queue",
+        "prompt": "Implement a cache-line padded lock-free bounded queue in Rust to prevent false sharing under high concurrency.",
+        "code": '''use std::sync::atomic::{AtomicUsize, Ordering};
+use std::cell::UnsafeCell;
+
+#[repr(align(64))]
+struct CachePadded<T>(T);
+
+pub struct LockFreeQueue<T, const CAP: usize> {
+    buffer: Box<[UnsafeCell<Option<T>>]>,
+    head: CachePadded<AtomicUsize>,
+    tail: CachePadded<AtomicUsize>,
+}
+
+unsafe impl<T: Send, const CAP: usize> Sync for LockFreeQueue<T, CAP> {}
+
+impl<T, const CAP: usize> LockFreeQueue<T, CAP> {
+    pub fn new() -> Self {
+        assert!(CAP > 0 && (CAP & (CAP - 1)) == 0, "Capacity must be power of two");
+        let mut v = Vec::with_capacity(CAP);
+        for _ in 0..CAP {
+            v.push(UnsafeCell::new(None));
+        }
+        Self {
+            buffer: v.into_boxed_slice(),
+            head: CachePadded(AtomicUsize::new(0)),
+            tail: CachePadded(AtomicUsize::new(0)),
+        }
+    }
+
+    pub fn enqueue(&self, item: T) -> Result<(), T> {
+        let tail = self.tail.0.load(Ordering::Relaxed);
+        let head = self.head.0.load(Ordering::Acquire);
+        if tail.wrapping_sub(head) >= CAP {
+            return Err(item);
+        }
+        let idx = tail & (CAP - 1);
+        unsafe { *self.buffer[idx].get() = Some(item); }
+        self.tail.0.store(tail.wrapping_add(1), Ordering::Release);
+        Ok(())
+    }
+}
+'''
+    },
+
+    # -------------------------------------------------------------------------
+    # 21. GO: Distributed Key-Value LSM MemTable
+    # -------------------------------------------------------------------------
+    {
+        "language": "go",
+        "domain": "general",
+        "title": "Concurrent In-Memory SkipList MemTable",
+        "prompt": "Create an in-memory thread-safe SkipList MemTable in Go for high-throughput append-only storage engines.",
+        "code": '''package storage
+
+import (
+	"bytes"
+	"math/rand"
+	"sync"
+)
+
+const maxLevel = 16
+
+type Node struct {
+	key     []byte
+	value   []byte
+	forward []*Node
+}
+
+type SkipListMemTable struct {
+	mu     sync.RWMutex
+	head   *Node
+	level  int
+	length int
+}
+
+func NewMemTable() *SkipListMemTable {
+	return &SkipListMemTable{
+		head:  &Node{forward: make([]*Node, maxLevel)},
+		level: 1,
+	}
+}
+
+func (m *SkipListMemTable) Put(key, value []byte) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	update := make([]*Node, maxLevel)
+	curr := m.head
+
+	for i := m.level - 1; i >= 0; i-- {
+		for curr.forward[i] != nil && bytes.Compare(curr.forward[i].key, key) < 0 {
+			curr = curr.forward[i]
+		}
+		update[i] = curr
+	}
+
+	curr = curr.forward[0]
+	if curr != nil && bytes.Equal(curr.key, key) {
+		curr.value = value
+		return
+	}
+
+	lvl := 1
+	for lvl < maxLevel && rand.Float32() < 0.5 {
+		lvl++
+	}
+	if lvl > m.level {
+		for i := m.level; i < lvl; i++ {
+			update[i] = m.head
+		}
+		m.level = lvl
+	}
+
+	newNode := &Node{key: key, value: value, forward: make([]*Node, lvl)}
+	for i := 0; i < lvl; i++ {
+		newNode.forward[i] = update[i].forward[i]
+		update[i].forward[i] = newNode
+	}
+	m.length++
+}
+'''
+    },
+
+    # -------------------------------------------------------------------------
+    # 22. C++: Lock-Free Atomic Marked Pointer Stack
+    # -------------------------------------------------------------------------
+    {
+        "language": "cpp",
+        "domain": "general",
+        "title": "Treiber Lock-Free Stack with Atomic CAS",
+        "prompt": "Implement a lock-free Treiber Stack in C++20 using std::atomic and compare_exchange_weak.",
+        "code": '''#include <atomic>
+#include <memory>
+#include <optional>
+
+template <typename T>
+class LockFreeStack {
+private:
+    struct Node {
+        T data;
+        Node* next;
+        Node(T val) : data(std::move(val)), next(nullptr) {}
+    };
+
+    std::atomic<Node*> head_{nullptr};
+
+public:
+    ~LockFreeStack() {
+        while (pop()) {}
+    }
+
+    void push(T val) {
+        auto* new_node = new Node(std::move(val));
+        new_node->next = head_.load(std::memory_order_relaxed);
+        while (!head_.compare_exchange_weak(new_node->next, new_node,
+                                            std::memory_order_release,
+                                            std::memory_order_relaxed)) {}
+    }
+
+    std::optional<T> pop() {
+        Node* old_head = head_.load(std::memory_order_relaxed);
+        while (old_head && !head_.compare_exchange_weak(old_head, old_head->next,
+                                                        std::memory_order_acquire,
+                                                        std::memory_order_relaxed)) {}
+        if (!old_head) return std::nullopt;
+        T res = std::move(old_head->data);
+        delete old_head;
+        return res;
+    }
+};
+'''
+    },
+
+    # -------------------------------------------------------------------------
+    # 23. C: Fixed-Size Slab Allocator
+    # -------------------------------------------------------------------------
+    {
+        "language": "c",
+        "domain": "general",
+        "title": "Fixed-Size Slab Memory Allocator",
+        "prompt": "Implement an embedded slab allocator in ANSI C with alignment guarantees and embedded free-list pointers.",
+        "code": '''#include <stddef.h>
+#include <stdint.h>
+#include <stdbool.h>
+
+typedef struct SlabEntry {
+    struct SlabEntry* next;
+} SlabEntry;
+
+typedef struct {
+    uint8_t* memory_pool;
+    size_t block_size;
+    size_t total_blocks;
+    SlabEntry* free_head;
+} SlabAllocator;
+
+void slab_init(SlabAllocator* slab, void* buffer, size_t total_size, size_t block_size) {
+    slab->memory_pool = (uint8_t*)buffer;
+    slab->block_size = (block_size < sizeof(SlabEntry)) ? sizeof(SlabEntry) : block_size;
+    slab->total_blocks = total_size / slab->block_size;
+    slab->free_head = NULL;
+
+    for (size_t i = 0; i < slab->total_blocks; ++i) {
+        SlabEntry* entry = (SlabEntry*)(slab->memory_pool + i * slab->block_size);
+        entry->next = slab->free_head;
+        slab->free_head = entry;
+    }
+}
+
+void* slab_alloc(SlabAllocator* slab) {
+    if (!slab->free_head) return NULL;
+    SlabEntry* allocated = slab->free_head;
+    slab->free_head = allocated->next;
+    return (void*)allocated;
+}
+
+void slab_free(SlabAllocator* slab, void* ptr) {
+    if (!ptr) return;
+    SlabEntry* entry = (SlabEntry*)ptr;
+    entry->next = slab->free_head;
+    slab->free_head = entry;
+}
+'''
+    },
+
+    # -------------------------------------------------------------------------
+    # 24. JAVA: High-Throughput Event Processor Pipeline
+    # -------------------------------------------------------------------------
+    {
+        "language": "java",
+        "domain": "instruction_following",
+        "title": "Concurrent Batching Event Aggregator",
+        "prompt": "Implement an async batching queue in Java with scheduled flushing, max size triggers, and backpressure.",
+        "code": '''package com.aethercoder.pipeline;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.*;
+import java.util.function.Consumer;
+
+public class BatchingAggregator<T> {
+    private final BlockingQueue<T> queue;
+    private final int maxBatchSize;
+    private final Consumer<List<T>> batchConsumer;
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+
+    public BatchingAggregator(int maxBatchSize, long flushIntervalMs, Consumer<List<T>> consumer) {
+        this.queue = new LinkedBlockingQueue<>();
+        this.maxBatchSize = maxBatchSize;
+        this.batchConsumer = consumer;
+        this.scheduler.scheduleWithFixedDelay(this::flush, flushIntervalMs, flushIntervalMs, TimeUnit.MILLISECONDS);
+    }
+
+    public void submit(T item) {
+        queue.offer(item);
+        if (queue.size() >= maxBatchSize) {
+            flush();
+        }
+    }
+
+    public synchronized void flush() {
+        if (queue.isEmpty()) return;
+        List<T> batch = new ArrayList<>(maxBatchSize);
+        queue.drainTo(batch, maxBatchSize);
+        if (!batch.isEmpty()) {
+            batchConsumer.accept(batch);
+        }
+    }
+}
+'''
+    },
+
+    # -------------------------------------------------------------------------
+    # 25. C#: Async Channel Pipeline with Backpressure
+    # -------------------------------------------------------------------------
+    {
+        "language": "csharp",
+        "domain": "instruction_following",
+        "title": "High-Throughput Channel Consumer Pipeline",
+        "prompt": "Write a bounded channel processing pipeline in C# with bounded backpressure and cancellation handling.",
+        "code": '''using System;
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
+
+public class DataPipeline<T>
+{
+    private readonly Channel<T> _channel;
+
+    public DataPipeline(int capacity)
+    {
+        var options = new BoundedChannelOptions(capacity)
+        {
+            FullMode = BoundedChannelFullMode.Wait,
+            SingleWriter = false,
+            SingleReader = false
+        };
+        _channel = Channel.CreateBounded<T>(options);
+    }
+
+    public async ValueTask PublishAsync(T item, CancellationToken ct = default)
+    {
+        await _channel.Writer.WriteAsync(item, ct);
+    }
+
+    public async Task StartConsumingAsync(Func<T, Task> handler, CancellationToken ct)
+    {
+        while (await _channel.Reader.WaitToReadAsync(ct))
+        {
+            while (_channel.Reader.TryRead(out var item))
+            {
+                await handler(item);
+            }
+        }
+    }
+}
+'''
+    },
+
+    # -------------------------------------------------------------------------
+    # 26. KOTLIN: Structured Concurrency Flow Orchestration
+    # -------------------------------------------------------------------------
+    {
+        "language": "kotlin",
+        "domain": "instruction_following",
+        "title": "Debounced State Flow with Coroutine Mutex",
+        "prompt": "Implement a thread-safe debounced flow aggregator in Kotlin using StateFlow and Coroutine Mutex.",
+        "code": '''package com.aethercoder.concurrency
+
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+class DebouncedStateAggregator<T>(
+    private val scope: CoroutineScope,
+    private val debouncePeriodMs: Long
+) {
+    private val _events = MutableSharedFlow<T>(replay = 0)
+    private val mutex = Mutex()
+
+    val debouncedFlow: Flow<T> = _events.debounce(debouncePeriodMs)
+
+    suspend fun emit(event: T) {
+        mutex.withLock {
+            _events.emit(event)
+        }
+    }
+}
+'''
+    },
+
+    # -------------------------------------------------------------------------
+    # 27. SWIFT: Distributed Actor-Isolated Storage
+    # -------------------------------------------------------------------------
+    {
+        "language": "swift",
+        "domain": "instruction_following",
+        "title": "Actor-Isolated In-Memory Cache with TTL",
+        "prompt": "Implement an actor-isolated thread-safe in-memory cache in Swift with TTL expiration.",
+        "code": '''import Foundation
+
+public actor MemoryCache<Key: Hashable, Value> {
+    private struct CacheEntry {
+        let value: Value
+        let expiration: Date
+    }
+
+    private var storage: [Key: CacheEntry] = [:]
+
+    public init() {}
+
+    public func set(_ value: Value, for key: Key, ttl: TimeInterval) {
+        let expiration = Date().addingTimeInterval(ttl)
+        storage[key] = CacheEntry(value: value, expiration: expiration)
+    }
+
+    public func get(for key: Key) -> Value? {
+        guard let entry = storage[key] else { return nil }
+        if Date() > entry.expiration {
+            storage.removeValue(forKey: key)
+            return nil
+        }
+        return entry.value
+    }
+}
+'''
+    },
+
+    # -------------------------------------------------------------------------
+    # 28. PHP: Resilient Circuit Breaker
+    # -------------------------------------------------------------------------
+    {
+        "language": "php",
+        "domain": "instruction_following",
+        "title": "Resilient Microservice Circuit Breaker",
+        "prompt": "Implement an enterprise circuit breaker pattern in modern PHP 8.2 with state transitions and half-open probes.",
+        "code": '''<?php
+declare(strict_types=1);
+
+namespace App\\Resilience;
+
+enum CircuitState: string {
+    case CLOSED = 'closed';
+    case OPEN = 'open';
+    case HALF_OPEN = 'half_open';
+}
+
+class CircuitBreaker {
+    private CircuitState $state = CircuitState::CLOSED;
+    private int $failureCount = 0;
+    private ?float $lastFailureTime = null;
+
+    public function __construct(
+        private readonly int $failureThreshold = 5,
+        private readonly float $recoveryTimeSeconds = 30.0
+    ) {}
+
+    public function execute(callable $action): mixed {
+        if ($this->isOpen()) {
+            throw new \\RuntimeException("Circuit breaker is OPEN. Fast failing request.");
+        }
+        try {
+            $result = $action();
+            $this->onSuccess();
+            return $result;
+        } catch (\\Throwable $e) {
+            $this->onFailure();
+            throw $e;
+        }
+    }
+
+    private function isOpen(): bool {
+        if ($this->state === CircuitState::OPEN) {
+            if ((microtime(true) - $this->lastFailureTime) > $this->recoveryTimeSeconds) {
+                $this->state = CircuitState::HALF_OPEN;
+                return false;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private function onSuccess(): void {
+        $this->failureCount = 0;
+        $this->state = CircuitState::CLOSED;
+    }
+
+    private function onFailure(): void {
+        $this->failureCount++;
+        $this->lastFailureTime = microtime(true);
+        if ($this->failureCount >= $this->failureThreshold) {
+            $this->state = CircuitState::OPEN;
+        }
+    }
+}
+'''
+    },
+
+    # -------------------------------------------------------------------------
+    # 29. RUBY: Thread-Safe Worker Pool
+    # -------------------------------------------------------------------------
+    {
+        "language": "ruby",
+        "domain": "general",
+        "title": "Thread-Safe Task Pool with Mutex Queue",
+        "prompt": "Implement an efficient thread-safe fixed-size worker pool in Ruby with graceful shutdown.",
+        "code": '''require "thread"
+
+class WorkerPool
+  def initialize(size:)
+    @queue = SizedQueue.new(size * 2)
+    @workers = size.times.map do
+      Thread.new do
+        catch(:done) do
+          loop do
+            task = @queue.pop
+            throw :done if task == :terminate
+            task.call
+          end
+        end
+      end
+    end
+  end
+
+  def post(&block)
+    @queue << block
+  end
+
+  def shutdown
+    @workers.size.times { @queue << :terminate }
+    @workers.each(&:join)
+  end
+end
+'''
+    },
+
+    # -------------------------------------------------------------------------
+    # 30. SQL: Real-Time Rolling Financial Metrics & Analytical Windows
+    # -------------------------------------------------------------------------
+    {
+        "language": "sql",
+        "domain": "general",
+        "title": "Real-Time Windowed Moving Averages & Percentile Ranks",
+        "prompt": "Write an advanced analytical SQL query calculating 7-day rolling revenue, cumulative total, and percent rank.",
+        "code": '''SELECT 
+    transaction_date,
+    product_category,
+    daily_volume,
+    daily_revenue,
+    SUM(daily_revenue) OVER (
+        PARTITION BY product_category 
+        ORDER BY transaction_date 
+        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+    ) AS rolling_7d_revenue,
+    ROUND(
+        AVG(daily_revenue) OVER (
+            PARTITION BY product_category 
+            ORDER BY transaction_date 
+            ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+        ), 2
+    ) AS rolling_7d_avg_revenue,
+    PERCENT_RANK() OVER (
+        PARTITION BY product_category 
+        ORDER BY daily_revenue ASC
+    ) AS daily_revenue_percentile
+FROM daily_sales_aggregates
+ORDER BY product_category, transaction_date DESC;
+'''
+    },
+
+    # -------------------------------------------------------------------------
+    # 31. HTML/CSS: Modern Responsive Grid & Accessible Micro-Interactions
+    # -------------------------------------------------------------------------
+    {
+        "language": "html_css",
+        "domain": "instruction_following",
+        "title": "Accessible Metric Dashboard with CSS Grid",
+        "prompt": "Create an accessible responsive CSS Grid dashboard layout with glassmorphic cards and hover animations.",
+        "code": '''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analytics Dashboard</title>
+<style>
+  :root {
+    --bg: #090d16;
+    --card-bg: rgba(255, 255, 255, 0.04);
+    --border: rgba(255, 255, 255, 0.1);
+    --accent: #6366f1;
+    --text: #f8fafc;
+  }
+  body {
+    margin: 0;
+    font-family: system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  .grid-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+    padding: 2rem;
+  }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(12px);
+    border-radius: 12px;
+    padding: 1.5rem;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s;
+  }
+  .card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px rgba(99, 102, 241, 0.2);
+  }
+  .metric-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--accent);
+  }
+</style>
+</head>
+<body>
+  <main class="grid-container">
+    <div class="card" tabindex="0">
+      <h3>Active Cluster Throughput</h3>
+      <div class="metric-value">4.2 GB/s</div>
+    </div>
+    <div class="card" tabindex="0">
+      <h3>P99 Latency</h3>
+      <div class="metric-value">12.4 ms</div>
+    </div>
+  </main>
+</body>
+</html>
+'''
+    },
+
+    # -------------------------------------------------------------------------
+    # 32. BASH: Automated Canary Deployer with Rollback Traps
+    # -------------------------------------------------------------------------
+    {
+        "language": "bash",
+        "domain": "instruction_following",
+        "title": "Canary Traffic Shifter with Automated Rollback",
+        "prompt": "Write a defensive Bash canary deployment script that gradually shifts traffic and triggers automatic rollback on error.",
+        "code": '''#!/usr/bin/env bash
+set -Eeuo pipefail
+
+readonly CANARY_PERCENTAGES=(10 25 50 100)
+readonly INGRESS_CONFIG="/etc/nginx/conf.d/upstream.conf"
+
+rollback() {
+    echo >&2 "[ALERT] Canary anomaly detected! Reverting traffic to 100% stable baseline..."
+    sed -i 's/weight=[0-9]*/weight=0/g' "${INGRESS_CONFIG}" || true
+    systemctl reload nginx || true
+    exit 1
+}
+trap rollback ERR
+
+for weight in "${CANARY_PERCENTAGES[@]}"; do
+    echo "[INFO] Shifting canary traffic to ${weight}%..."
+    sed -i "s/canary_weight=[0-9]*/canary_weight=${weight}/g" "${INGRESS_CONFIG}"
+    systemctl reload nginx
+    sleep 5
+done
+
+echo "[SUCCESS] Canary deployment shifted to 100% capacity safely."
+exit 0
+'''
+    },
 ]
+

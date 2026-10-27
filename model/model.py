@@ -61,6 +61,7 @@ class CodingCausalLM(nn.Module):
         self,
         input_ids: torch.Tensor,
         position_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
         kv_caches: Optional[List[Optional[Tuple[torch.Tensor, torch.Tensor]]]] = None,
         use_cache: bool = False,
@@ -69,16 +70,26 @@ class CodingCausalLM(nn.Module):
         
         Args:
             input_ids: [batch_size, seq_len]
-            labels: [batch_size, seq_len] optional target token IDs
+            position_ids: [batch_size, seq_len] optional position indices
+            attention_mask: [batch_size, seq_len] or [batch_size, 1, seq_len, kv_seq_len] optional mask
+            labels: [batch_size, seq_len] optional target token IDs (-100 ignored in loss)
+            kv_caches: list of cached (K, V) tuples per layer
+            use_cache: whether to output updated KV caches
         """
         batch_size, seq_len = input_ids.shape
         device = input_ids.device
 
+        # If position_ids is None, determine from KV cache past length to ensure cached decoding aligns
         if position_ids is None:
-            position_ids = torch.arange(seq_len, dtype=torch.long, device=device).unsqueeze(0).expand(batch_size, -1)
+            past_len = 0
+            if kv_caches is not None and len(kv_caches) > 0 and kv_caches[0] is not None:
+                past_len = kv_caches[0][0].shape[2]
+            position_ids = (past_len + torch.arange(seq_len, dtype=torch.long, device=device)).unsqueeze(0).expand(batch_size, -1)
 
         hidden_states = self.embed_tokens(input_ids)
-        cos, sin = self.rotary_emb(hidden_states, seq_len=self.config.max_position_embeddings)
+
+        max_pos_needed = int(position_ids.max().item()) + 1 if position_ids.numel() > 0 else seq_len
+        cos, sin = self.rotary_emb(hidden_states, seq_len=max_pos_needed)
 
         total_aux_loss = torch.tensor(0.0, device=device)
         new_kv_caches = [] if use_cache else None
@@ -90,6 +101,7 @@ class CodingCausalLM(nn.Module):
                 position_ids=position_ids,
                 cos=cos,
                 sin=sin,
+                attention_mask=attention_mask,
                 kv_cache=layer_cache,
                 use_cache=use_cache,
             )
@@ -105,9 +117,13 @@ class CodingCausalLM(nn.Module):
             # Shift so that tokens < n predict n
             shift_logits = logits[..., :-1, :].contiguous()
             shift_labels = labels[..., 1:].contiguous()
-            loss_fct = nn.CrossEntropyLoss()
-            ce_loss = loss_fct(shift_logits.view(-1, self.vocab_size), shift_labels.view(-1))
-            loss = ce_loss + total_aux_loss
+            if shift_labels.numel() == 0:
+                loss = total_aux_loss
+            else:
+                loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
+                ce_loss = loss_fct(shift_logits.view(-1, self.vocab_size), shift_labels.view(-1))
+                loss = ce_loss + total_aux_loss
+
 
         return {
             "logits": logits,
@@ -117,23 +133,32 @@ class CodingCausalLM(nn.Module):
         }
 
     def count_parameters(self) -> Dict[str, int]:
-        """Calculates total, active, and embedding parameters."""
+        """Calculates total, active, routed, shared, and embedding parameters directly from modules."""
         total_params = sum(p.numel() for p in self.parameters())
         embed_params = sum(p.numel() for p in self.embed_tokens.parameters())
         
-        # Calculate active parameters for MoE
-        if self.config.model_type == "moe_causal_lm":
-            # In MoE: router selects num_experts_per_tok out of num_experts
+        if self.config.model_type == "moe_causal_lm" and len(self.layers) > 0 and hasattr(self.layers[0], "mlp") and hasattr(self.layers[0].mlp, "experts"):
             single_expert_params = sum(p.numel() for p in self.layers[0].mlp.experts[0].parameters())
-            shared_experts_params = sum(p.numel() for p in self.layers[0].mlp.shared_experts.parameters()) if self.layers[0].mlp.shared_experts else 0
-            inactive_expert_params_per_layer = single_expert_params * (self.config.num_experts - self.config.num_experts_per_tok)
-            total_inactive_params = inactive_expert_params_per_layer * self.config.num_hidden_layers
-            active_params = total_params - total_inactive_params
+            total_routed_expert_params = single_expert_params * self.config.num_experts * self.config.num_hidden_layers
+            active_routed_expert_params = single_expert_params * self.config.num_experts_per_tok * self.config.num_hidden_layers
+            
+            shared_expert_params = 0
+            if self.layers[0].mlp.shared_experts is not None:
+                shared_expert_params = sum(p.numel() for p in self.layers[0].mlp.shared_experts.parameters()) * self.config.num_hidden_layers
+                
+            inactive_params = total_routed_expert_params - active_routed_expert_params
+            active_params = total_params - inactive_params
         else:
+            total_routed_expert_params = 0
+            shared_expert_params = 0
+            inactive_params = 0
             active_params = total_params
 
         return {
             "total_parameters": total_params,
             "active_parameters": active_params,
+            "inactive_parameters": inactive_params,
+            "routed_expert_parameters": total_routed_expert_params,
+            "shared_expert_parameters": shared_expert_params,
             "embedding_parameters": embed_params,
         }

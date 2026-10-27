@@ -472,6 +472,526 @@ def verify_signature(received_sig: str, expected_sig: str) -> bool:
 }
 """,
     ),
+
+    # -------------------------------------------------------------
+    # 10. Multi-File Reasoning & Clean Architecture (Python)
+    # -------------------------------------------------------------
+    CodeSample(
+        sample_id="py-002-clean-arch-repository",
+        domain="multi_file_reasoning",
+        language="python",
+        prompt="Design a clean architecture multi-file structure with Domain Entity, Repository Interface, and Async SQLAlchemy implementation.",
+        code="""# File 1: domain/models.py
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional
+
+@dataclass(frozen=True)
+class UserEntity:
+    user_id: str
+    email: str
+    hashed_password: str
+    is_active: bool = True
+    created_at: datetime = datetime.utcnow()
+
+# File 2: domain/repositories.py
+from abc import ABC, abstractmethod
+from typing import Optional, List
+
+class UserRepository(ABC):
+    @abstractmethod
+    async def get_by_id(self, user_id: str) -> Optional[UserEntity]:
+        pass
+
+    @abstractmethod
+    async def get_by_email(self, email: str) -> Optional[UserEntity]:
+        pass
+
+    @abstractmethod
+    async def save(self, user: UserEntity) -> UserEntity:
+        pass
+
+# File 3: infrastructure/sql_user_repo.py
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from typing import Optional
+
+class SqlAlchemyUserRepository(UserRepository):
+    def __init__(self, session: AsyncSession):
+        self._session = session
+
+    async def get_by_id(self, user_id: str) -> Optional[UserEntity]:
+        query = select(UserEntity).where(UserEntity.user_id == user_id)
+        result = await self._session.execute(query)
+        return result.scalar_one_or_none()
+
+    async def get_by_email(self, email: str) -> Optional[UserEntity]:
+        query = select(UserEntity).where(UserEntity.email == email)
+        result = await self._session.execute(query)
+        return result.scalar_one_or_none()
+
+    async def save(self, user: UserEntity) -> UserEntity:
+        self._session.add(user)
+        await self._session.flush()
+        return user
+""",
+        tests="""import pytest
+import asyncio
+from unittest.mock import AsyncMock
+
+@pytest.mark.asyncio
+async def test_user_repository_interface():
+    mock_session = AsyncMock()
+    repo = SqlAlchemyUserRepository(mock_session)
+    assert isinstance(repo, UserRepository)
+""",
+    ),
+
+    # -------------------------------------------------------------
+    # 11. Production Unit Testing Suite (Python PyTest)
+    # -------------------------------------------------------------
+    CodeSample(
+        sample_id="py-003-unit-test-suite",
+        domain="unit_test",
+        language="python",
+        prompt="Write a comprehensive unit test suite using Pytest with fixtures, parametrization, exception handling, and mock patching.",
+        code="""import pytest
+from unittest.mock import patch, MagicMock
+from decimal import Decimal
+
+class InsufficientFundsError(Exception):
+    pass
+
+class BankAccount:
+    def __init__(self, account_id: str, initial_balance: Decimal = Decimal("0.00")):
+        if initial_balance < 0:
+            raise ValueError("Initial balance cannot be negative")
+        self.account_id = account_id
+        self._balance = initial_balance
+
+    @property
+    def balance(self) -> Decimal:
+        return self._balance
+
+    def deposit(self, amount: Decimal) -> Decimal:
+        if amount <= Decimal("0.00"):
+            raise ValueError("Deposit amount must be positive")
+        self._balance += amount
+        return self._balance
+
+    def withdraw(self, amount: Decimal) -> Decimal:
+        if amount <= Decimal("0.00"):
+            raise ValueError("Withdrawal amount must be positive")
+        if amount > self._balance:
+            raise InsufficientFundsError(f"Cannot withdraw {amount}: balance is {self._balance}")
+        self._balance -= amount
+        return self._balance
+
+# Test Suite
+@pytest.fixture
+def account():
+    return BankAccount(account_id="acc_001", initial_balance=Decimal("100.00"))
+
+@pytest.mark.parametrize("deposit_val,expected_balance", [
+    (Decimal("10.00"), Decimal("110.00")),
+    (Decimal("0.50"), Decimal("100.50")),
+    (Decimal("1000.00"), Decimal("1100.00")),
+])
+def test_valid_deposits(account, deposit_val, expected_balance):
+    assert account.deposit(deposit_val) == expected_balance
+    assert account.balance == expected_balance
+
+def test_invalid_deposit_raises(account):
+    with pytest.raises(ValueError, match="Deposit amount must be positive"):
+        account.deposit(Decimal("-5.00"))
+
+def test_withdraw_insufficient_funds_raises(account):
+    with pytest.raises(InsufficientFundsError):
+        account.withdraw(Decimal("200.00"))
+""",
+        tests="""# All tests self-contained in snippet
+def test_run_verification():
+    acc = BankAccount("test", Decimal("50.00"))
+    acc.deposit(Decimal("25.00"))
+    assert acc.balance == Decimal("75.00")
+""",
+    ),
+
+    # -------------------------------------------------------------
+    # 12. Security: SSRF Protection with DNS Pinning (TypeScript)
+    # -------------------------------------------------------------
+    CodeSample(
+        sample_id="sec-002-ssrf-dns-pinning",
+        domain="security",
+        language="typescript",
+        prompt="Prevent Server-Side Request Forgery (SSRF) by validating target IP addresses and blocking private CIDR blocks.",
+        code="""// Vulnerable Code:
+import http from 'http';
+
+export async function proxyWebhook(targetUrl: string, payload: any) {
+  // VULNERABLE: Direct fetch allows attackers to access cloud metadata (169.254.169.254) or localhost
+  return fetch(targetUrl, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+""",
+        target_fix="""// Secure Remediated Code:
+import dns from 'dns/promises';
+import net from 'net';
+
+const PRIVATE_IPV4_RANGES = [
+  /^127\\./,               // Loopback
+  /^10\\./,                // Class A private
+  /^172\\.(1[6-9]|2[0-9]|3[0-1])\\./, // Class B private
+  /^192\\.168\\./,          // Class C private
+  /^169\\.254\\./,          // Link-local / Cloud Metadata
+];
+
+export async function validateSafeUrl(rawUrl: string): Promise<URL> {
+  const parsed = new URL(rawUrl);
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error('Disallowed protocol. Only HTTP(S) permitted.');
+  }
+
+  const host = parsed.hostname;
+  const lookup = await dns.lookup(host);
+  const ip = lookup.address;
+
+  if (lookup.family === 4) {
+    for (const pattern of PRIVATE_IPV4_RANGES) {
+      if (pattern.test(ip)) {
+        throw new Error(`SSRF Blocked: Target resolves to prohibited private IP: ${ip}`);
+      }
+    }
+  } else if (lookup.family === 6 && (ip === '::1' || ip.startsWith('fc00:') || ip.startsWith('fe80:'))) {
+    throw new Error(`SSRF Blocked: Prohibited IPv6 private address: ${ip}`);
+  }
+
+  return parsed;
+}
+""",
+    ),
+
+    # -------------------------------------------------------------
+    # 13. Security: SQL Injection Remediation (Python)
+    # -------------------------------------------------------------
+    CodeSample(
+        sample_id="sec-003-sqli-parameterized",
+        domain="security",
+        language="python",
+        prompt="Remediate SQL injection vulnerability by enforcing parameterized query execution.",
+        code="""# Vulnerable Code:
+def query_user_orders(db_cursor, username: str, status_filter: str):
+    # VULNERABLE: String formatting permits SQL Injection: ' OR 1=1 --
+    query = f"SELECT id, total, status FROM orders WHERE username = '{username}' AND status = '{status_filter}'"
+    db_cursor.execute(query)
+    return db_cursor.fetchall()
+""",
+        target_fix="""# Secure Code:
+def query_user_orders(db_cursor, username: str, status_filter: str):
+    \"\"\"Remediated: Uses parameterized query syntax preventing SQL injection.\"\"\"
+    query = "SELECT id, total, status FROM orders WHERE username = %s AND status = %s"
+    db_cursor.execute(query, (username, status_filter))
+    return db_cursor.fetchall()
+""",
+    ),
+
+    # -------------------------------------------------------------
+    # 14. Debugging: Goroutine Channel Deadlock (Go)
+    # -------------------------------------------------------------
+    CodeSample(
+        sample_id="debug-002-go-channel-deadlock",
+        domain="debugging",
+        language="go",
+        prompt="Fix the deadlock in this asynchronous pipeline caused by unbuffered channel write without a reader.",
+        code="""// Buggy Code:
+package pipeline
+
+func ProcessData(values []int) []int {
+	ch := make(chan int) // Unbuffered: Blocks sender when no reader is active
+	var out []int
+
+	for _, v := range values {
+		ch <- v * 2 // Deadlocks on second iteration!
+	}
+	close(ch)
+
+	for res := range ch {
+		out = append(out, res)
+	}
+	return out
+}
+""",
+        target_fix="""// Fixed Code:
+package pipeline
+
+func ProcessData(values []int) []int {
+	out := make([]int, 0, len(values))
+	if len(values) == 0 {
+		return out
+	}
+
+	ch := make(chan int, len(values)) // Buffered to hold all outputs without blocking
+	for _, v := range values {
+		ch <- v * 2
+	}
+	close(ch)
+
+	for res := range ch {
+		out = append(out, res)
+	}
+	return out
+}
+""",
+    ),
+
+    # -------------------------------------------------------------
+    # 15. Instruction Following: Token Bucket Rate Limiter (Rust)
+    # -------------------------------------------------------------
+    CodeSample(
+        sample_id="rs-002-token-bucket-ratelimiter",
+        domain="instruction_following",
+        language="rust",
+        prompt="Implement a high-performance thread-safe Token Bucket Rate Limiter in Rust with atomics.",
+        code="""use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
+
+pub struct TokenBucket {
+    capacity: u64,
+    refill_rate_per_sec: u64,
+    tokens: AtomicU64,
+    last_refill_instant: Instant,
+}
+
+impl TokenBucket {
+    pub fn new(capacity: u64, refill_rate_per_sec: u64) -> Self {
+        Self {
+            capacity,
+            refill_rate_per_sec,
+            tokens: AtomicU64::new(capacity),
+            last_refill_instant: Instant::now(),
+        }
+    }
+
+    pub fn try_acquire(&self, count: u64) -> bool {
+        let mut current = self.tokens.load(Ordering::Acquire);
+        loop {
+            if current < count {
+                return false;
+            }
+            match self.tokens.compare_exchange_weak(
+                current,
+                current - count,
+                Ordering::Release,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => return true,
+                Err(updated) => current = updated,
+            }
+        }
+    }
+}
+""",
+        tests="""#[test]
+fn test_rate_limiter() {
+    let bucket = TokenBucket::new(10, 10);
+    assert!(bucket.try_acquire(5));
+    assert!(bucket.try_acquire(5));
+    assert!(!bucket.try_acquire(1));
+}
+""",
+    ),
+
+    # -------------------------------------------------------------
+    # 16. General: Consistent Hash Ring (Go)
+    # -------------------------------------------------------------
+    CodeSample(
+        sample_id="go-002-consistent-hash-ring",
+        domain="general",
+        language="go",
+        prompt="Implement a consistent hash ring with virtual nodes in Go for distributed load balancing.",
+        code="""package hashing
+
+import (
+	"fmt"
+	"hash/fnv"
+	"sort"
+	"strconv"
+	"sync"
+)
+
+type HashRing struct {
+	mu           sync.RWMutex
+	replicas     int
+	ring         []uint32
+	ringMap      map[uint32]string
+}
+
+func NewHashRing(replicas int) *HashRing {
+	return &HashRing{
+		replicas: replicas,
+		ringMap:  make(map[uint32]string),
+	}
+}
+
+func (h *HashRing) hashKey(key string) uint32 {
+	hasher := fnv.New32a()
+	hasher.Write([]byte(key))
+	return hasher.Sum32()
+}
+
+func (h *HashRing) AddNode(node string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	for i := 0; i < h.replicas; i++ {
+		vnodeKey := node + "#" + strconv.Itoa(i)
+		hash := h.hashKey(vnodeKey)
+		h.ring = append(h.ring, hash)
+		h.ringMap[hash] = node
+	}
+	sort.Slice(h.ring, func(i, j int) bool { return h.ring[i] < h.ring[j] })
+}
+
+func (h *HashRing) GetNode(key string) (string, error) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	if len(h.ring) == 0 {
+		return "", fmt.Errorf("hash ring is empty")
+	}
+
+	hash := h.hashKey(key)
+	idx := sort.Search(len(h.ring), func(i int) bool { return h.ring[i] >= hash })
+	if idx == len(h.ring) {
+		idx = 0 // Wrap around the ring
+	}
+	return h.ringMap[h.ring[idx]], nil
+}
+""",
+        tests="""package hashing
+import "testing"
+
+func TestHashRing(t *testing.T) {
+	ring := NewHashRing(3)
+	ring.AddNode("node-1")
+	ring.AddNode("node-2")
+	node, err := ring.GetNode("user_session_482")
+	if err != nil || node == "" {
+		t.Fatalf("Expected valid node, got: %s, %v", node, err)
+	}
+}
+""",
+    ),
+
+    # -------------------------------------------------------------
+    # 17. Code Completion: Discriminated State Machine (TypeScript)
+    # -------------------------------------------------------------
+    CodeSample(
+        sample_id="ts-002-state-machine",
+        domain="code_completion",
+        language="typescript",
+        prompt="Implement a type-safe generic state machine with discriminated transitions and entry/exit actions.",
+        code="""export type MachineState = 'IDLE' | 'FETCHING' | 'SUCCESS' | 'ERROR';
+export type MachineEvent = 
+  | { type: 'START' }
+  | { type: 'RESOLVE'; data: string[] }
+  | { type: 'REJECT'; error: Error }
+  | { type: 'RESET' };
+
+export interface MachineContext {
+  state: MachineState;
+  data?: string[];
+  error?: Error;
+}
+
+export function transition(ctx: MachineContext, event: MachineEvent): MachineContext {
+  switch (ctx.state) {
+    case 'IDLE':
+      if (event.type === 'START') {
+        return { state: 'FETCHING' };
+      }
+      return ctx;
+    case 'FETCHING':
+      if (event.type === 'RESOLVE') {
+        return { state: 'SUCCESS', data: event.data };
+      }
+      if (event.type === 'REJECT') {
+        return { state: 'ERROR', error: event.error };
+      }
+      return ctx;
+    case 'SUCCESS':
+    case 'ERROR':
+      if (event.type === 'RESET') {
+        return { state: 'IDLE' };
+      }
+      return ctx;
+  }
+}
+""",
+    ),
+
+    # -------------------------------------------------------------
+    # 18. Agent Trajectory: Multi-File Cross-Module Refactor
+    # -------------------------------------------------------------
+    CodeSample(
+        sample_id="agent-002-multifile-refactor-import",
+        domain="agent_trajectory",
+        language="json",
+        prompt="Autonomous agent trajectory performing multi-file refactoring and updating dependent import statements.",
+        code="""{
+  "trajectory_id": "traj-refactor-089",
+  "goal": "Refactor UserCredentials into auth/credentials.py and update references in server.py and routes.py",
+  "steps": [
+    {
+      "step": 1,
+      "thought": "Examine project files to locate all imports of UserCredentials.",
+      "tool_call": {
+        "name": "search_code",
+        "arguments": {"query": "from models import UserCredentials"}
+      },
+      "tool_result": ["src/api/routes.py", "src/server.py"]
+    },
+    {
+      "step": 2,
+      "thought": "Move class UserCredentials into src/auth/credentials.py and write new module.",
+      "tool_call": {
+        "name": "write_file",
+        "arguments": {
+          "rel_path": "src/auth/credentials.py",
+          "content": "from pydantic import BaseModel\\n\\nclass UserCredentials(BaseModel):\\n    username: str\\n    password: str\\n"
+        }
+      },
+      "tool_result": {"status": "success", "bytes_written": 105}
+    },
+    {
+      "step": 3,
+      "thought": "Update import in src/api/routes.py to use new module location.",
+      "tool_call": {
+        "name": "apply_replacement",
+        "arguments": {
+          "rel_path": "src/api/routes.py",
+          "target": "from models import UserCredentials",
+          "replacement": "from src.auth.credentials import UserCredentials"
+        }
+      },
+      "tool_result": {"success": true, "diff": "--- a/src/api/routes.py\\n+++ b/src/api/routes.py\\n@@ -2,1 +2,1 @@\\n-from models import UserCredentials\\n+from src.auth.credentials import UserCredentials\\n"}
+    },
+    {
+      "step": 4,
+      "thought": "Execute pytest to ensure all endpoints pass without import errors.",
+      "tool_call": {
+        "name": "run_command",
+        "arguments": {"cmd_args": ["pytest", "tests/test_api.py"]}
+      },
+      "tool_result": {"exit_code": 0, "stdout": "8 passed in 0.22s"}
+    }
+  ]
+}
+""",
+    ),
 ]
 
 

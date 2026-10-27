@@ -13,8 +13,11 @@ def build_all_stage_datasets(base_dir: str = "./data"):
     dpo_dir = os.path.join(base_dir, "dpo")
     agent_dir = os.path.join(base_dir, "agent")
     fim_dir = os.path.join(base_dir, "fim")
+    multi_file_dir = os.path.join(base_dir, "multi_file")
+    unit_test_dir = os.path.join(base_dir, "unit_test")
 
-    for d in [sft_dir, dpo_dir, agent_dir, fim_dir]:
+
+    for d in [sft_dir, dpo_dir, agent_dir, fim_dir, multi_file_dir, unit_test_dir]:
         os.makedirs(d, exist_ok=True)
 
     # 1. Build SFT Instruction-Following Dataset
@@ -95,9 +98,43 @@ def build_all_stage_datasets(base_dir: str = "./data"):
                 f.write(json.dumps(record) + "\n")
                 fim_count += 1
 
+    # 5. Build Multi-File Repository Reasoning Dataset
+    multi_file_path = os.path.join(multi_file_dir, "multi_file_reasoning.jsonl")
+    multi_file_count = 0
+    with open(multi_file_path, "w", encoding="utf-8") as f:
+        for item in CURATED_DATASET:
+            if item.domain == "multi_file_reasoning":
+                record = {
+                    "id": f"multifile-{item.sample_id}",
+                    "language": item.language,
+                    "prompt": item.prompt,
+                    "code": item.code,
+                }
+                f.write(json.dumps(record) + "\n")
+                multi_file_count += 1
+
+    # 6. Build Unit Test Generation Dataset
+    unit_test_path = os.path.join(unit_test_dir, "unit_test_suites.jsonl")
+    unit_test_count = 0
+    with open(unit_test_path, "w", encoding="utf-8") as f:
+        for item in CURATED_DATASET:
+            if item.domain == "unit_test" or item.tests:
+                record = {
+                    "id": f"test-{item.sample_id}",
+                    "language": item.language,
+                    "prompt": f"Write unit tests for: {item.prompt or item.sample_id}",
+                    "implementation": item.code,
+                    "tests": item.tests or item.code,
+                }
+                f.write(json.dumps(record) + "\n")
+                unit_test_count += 1
+
     return {
         "sft_samples": sft_count,
         "dpo_samples": dpo_count,
         "agent_trajectories": agent_count,
         "fim_samples": fim_count,
+        "multi_file_samples": multi_file_count,
+        "unit_test_samples": unit_test_count,
     }
+

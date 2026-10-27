@@ -19,11 +19,12 @@ class SandboxedTerminal:
         timeout: Optional[int] = None,
         env: Optional[Dict[str, str]] = None,
     ) -> Dict[str, object]:
-        """Runs an authorized command and returns stdout, stderr, and exit code."""
+        """Runs an authorized command in an isolated environment and returns stdout, stderr, and exit code."""
         # Enforce security validation
         self.guard.validate_command(cmd_args)
 
         timeout_sec = timeout or self.default_timeout
+        sanitized_env = self.guard.get_sanitized_env(env)
 
         try:
             proc = subprocess.run(
@@ -32,7 +33,7 @@ class SandboxedTerminal:
                 capture_output=True,
                 text=True,
                 timeout=timeout_sec,
-                env=env,
+                env=sanitized_env,
             )
             return {
                 "exit_code": proc.returncode,
@@ -54,3 +55,4 @@ class SandboxedTerminal:
                 "stderr": str(exc),
                 "timed_out": False,
             }
+

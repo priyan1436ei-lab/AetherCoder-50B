@@ -81,17 +81,22 @@ class CodeGenerator:
         input_tensor = torch.tensor([input_ids], dtype=torch.long, device=self.device)
         generated_ids: List[int] = []
 
-        stop_token_ids = stop_tokens or set()
+        stop_token_ids = set(stop_tokens) if stop_tokens else set()
         if self.tokenizer.eos_token_id is not None:
             stop_token_ids.add(self.tokenizer.eos_token_id)
 
-        # Initial forward pass with prompt
+        max_ctx = getattr(self.model.config, "max_position_embeddings", 4096)
+
+        # Initial forward pass with prompt (prefill)
         with torch.no_grad():
             outputs = self.model(input_ids=input_tensor, use_cache=True)
             kv_caches = outputs["kv_caches"]
             next_logits = outputs["logits"][:, -1, :]
 
         for _ in range(max_new_tokens):
+            if input_tensor.shape[1] + len(generated_ids) >= max_ctx:
+                break
+
             next_token = self._sample_next_token(
                 next_logits,
                 temperature=temperature,
@@ -108,7 +113,7 @@ class CodeGenerator:
             chunk_text = self.tokenizer.decode([next_token])
             yield chunk_text
 
-            # Single-token step forward using KV cache
+            # Single-token step forward using KV cache (decode)
             next_input = torch.tensor([[next_token]], dtype=torch.long, device=self.device)
             with torch.no_grad():
                 step_out = self.model(input_ids=next_input, kv_caches=kv_caches, use_cache=True)
@@ -123,6 +128,7 @@ class CodeGenerator:
         top_p: float = 0.95,
         top_k: int = 50,
         repetition_penalty: float = 1.05,
+        stop_tokens: Optional[Set[int]] = None,
     ) -> str:
         """Convenience method returning the complete generated string."""
         return "".join(
@@ -133,5 +139,6 @@ class CodeGenerator:
                 top_p=top_p,
                 top_k=top_k,
                 repetition_penalty=repetition_penalty,
+                stop_tokens=stop_tokens,
             )
         )

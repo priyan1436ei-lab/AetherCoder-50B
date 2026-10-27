@@ -2,7 +2,6 @@
 
 import json
 import os
-import struct
 from typing import Iterator, List, Optional
 import numpy as np
 
@@ -10,17 +9,29 @@ import numpy as np
 class BinaryDatasetWriter:
     """Writes tokenized integer arrays into memory-mapped .bin and .idx shards."""
 
-    def __init__(self, output_dir: str, shard_size_tokens: int = 100_000_000, dtype: np.dtype = np.uint16):
+    def __init__(self, output_dir: str, shard_size_tokens: int = 100_000_000, dtype: np.dtype = np.uint32):
         self.output_dir = output_dir
         self.shard_size_tokens = shard_size_tokens
-        self.dtype = dtype
+        self.dtype = np.dtype(dtype)
         os.makedirs(output_dir, exist_ok=True)
         self.current_shard_idx = 0
         self.current_tokens: List[int] = []
         self.total_tokens_written = 0
 
     def add_tokens(self, tokens: List[int]) -> None:
-        """Appends tokens to current buffer and flushes shard if threshold reached."""
+        """Appends tokens to current buffer with overflow checks and flushes shard if threshold reached."""
+        if not tokens:
+            return
+
+        # Check for token ID overflow against storage dtype
+        max_val = np.iinfo(self.dtype).max
+        min_val = np.iinfo(self.dtype).min
+        for tok in tokens:
+            if tok > max_val or tok < min_val:
+                raise ValueError(
+                    f"Token ID {tok} exceeds capacity of storage dtype {self.dtype} (range: [{min_val}, {max_val}])"
+                )
+
         self.current_tokens.extend(tokens)
         if len(self.current_tokens) >= self.shard_size_tokens:
             self._flush_shard()
@@ -54,15 +65,21 @@ class BinaryDatasetWriter:
 class BinaryDatasetReader:
     """Zero-copy memory-mapped streaming dataset reader across binary shards."""
 
-    def __init__(self, shard_paths: List[str], dtype: np.dtype = np.uint16):
+    def __init__(self, shard_paths: List[str], dtype: np.dtype = np.uint32):
         self.shard_paths = shard_paths
-        self.dtype = dtype
+        self.dtype = np.dtype(dtype)
 
     def iterate_blocks(self, block_size: int = 2048) -> Iterator[np.ndarray]:
-        """Yields fixed-length token sequences for training."""
+        """Yields fixed-length token sequences for training, ignoring empty or corrupted files."""
         for path in self.shard_paths:
             if not os.path.exists(path):
                 continue
+            file_size = os.path.getsize(path)
+            item_size = self.dtype.itemsize
+            if file_size < item_size:
+                continue
+
+            # Read via memmap safely
             mmap_arr = np.memmap(path, dtype=self.dtype, mode="r")
             try:
                 num_blocks = len(mmap_arr) // block_size

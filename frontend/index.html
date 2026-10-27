@@ -29,7 +29,7 @@
       </div>
       <div class="cluster-badge" id="cluster-status-badge">
         <span class="status-dot online"></span>
-        <span id="cluster-status-text">Engine Ready (Local RTX 3050 & Cluster Sync)</span>
+        <span id="cluster-status-text">Connecting to Engine...</span>
       </div>
     </div>
 
@@ -37,8 +37,7 @@
       <div class="model-selector-pill">
         <label for="model-select">Active Model:</label>
         <select id="model-select">
-          <option value="codex-50b-moe" selected>Codex-50B-MoE (16 Experts, Top-2 Routing)</option>
-          <option value="codex-150m-prototype">Codex-150M-Prototype (Local Execution)</option>
+          <option value="codex-150m-prototype" selected>Codex-150M-Prototype (Active Local Model)</option>
         </select>
       </div>
     </div>
@@ -47,11 +46,11 @@
       <div class="telemetry-bar">
         <div class="telemetry-item" title="Host System RAM Utilization">
           <span class="label">RAM</span>
-          <span class="val" id="metric-ram">24.0 GB</span>
+          <span class="val" id="metric-ram">-- GB</span>
         </div>
         <div class="telemetry-item" title="Dedicated VRAM Allocation">
           <span class="label">VRAM</span>
-          <span class="val" id="metric-vram">6.0 GB</span>
+          <span class="val" id="metric-vram">-- MB</span>
         </div>
         <div class="telemetry-item" title="Active Throughput">
           <span class="label">SPEED</span>
